@@ -11,66 +11,75 @@ meant to simplify implementation of custom IPC protocols.
 The example demonstrates how to spawn a server binary as a child process of the
 client binary and communicate with it using standard input/output streams.
 
-### Server
-
-```rust
-use ioserverlib::prelude::*;
-use ioserverlib::server::Server;
-
-struct MySerializer;
-
-impl JsonSerializer for MySerializer {
-    type Error = Box<dyn std::error::Error>;
-    type Message = String;
-}
-
-fn main() {
-    let channel = ioserverlib::channel::stdio(MySerializer);
-
-    let mut server = Server::new(channel, |message| {
-        match message {
-            "ping" => Some(String::from("pong")),
-
-            _ => {
-                eprintln!("unknown command: {}", message);
-
-                None
-            }
-        }
-    });
-
-    loop {
-        if let Err(err) = server.update() {
-            eprintln!("server error: {}", err);
-        }
-    }
-}
-```
-
-### Client
-
 ```rust
 use std::process::Command;
 
 use ioserverlib::prelude::*;
+use ioserverlib::server::Server;
 
-struct MySerializer;
-
-impl JsonSerializer for MySerializer {
-    type Error = Box<dyn std::error::Error>;
-    type Message = String;
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+enum Message {
+    Ping,
+    Pong
 }
 
-fn main() {
-    let command = Command::new("path/to/server");
+struct Serializer;
 
-    let (_, mut channel) = ioserverlib::client::process_stdio(command, MySerializer);
+impl JsonSerializer for Serializer {
+    type Error = Box<dyn std::error::Error>;
+    type Message = Message;
+}
 
-    channel.write(String::from("ping")).unwrap();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args().skip(1);
 
-    assert_eq!(channel.read().unwrap(), "pong");
+    match args.next().as_deref() {
+        Some("client") => {
+            let mut command = Command::new(std::env::current_exe()?);
+
+            let command = command.arg("server");
+
+            let (mut child, mut channel) = ioserverlib::client::process_stdio(command, Serializer)?;
+
+            channel.write(Message::Ping)?;
+
+            dbg!(channel.read()?);
+
+            child.kill()?;
+        }
+
+        Some("server") => {
+            let channel = ioserverlib::channel::stdio(Serializer);
+
+            let mut server = Server::new(channel, |message| {
+                match message {
+                    Message::Ping => Some(Message::Pong),
+                    Message::Pong => None
+                }
+            });
+
+            loop {
+                if let Err(err) = server.update() {
+                    eprintln!("server error: {err}");
+                }
+            }
+        }
+
+        Some(command) => eprintln!("unknown command: {command}"),
+        _ => eprintln!("missing command: client or server")
+    }
+
+    Ok(())
 }
 ```
+
+> $ cargo run \-\- client
+>
+> [src/main.rs:32:13] channel.read()? = Pong
+
+> $ echo '"Ping"' | cargo run \-\- server
+>
+> "Pong"
 
 Author: [Nikita Podvirnyi](https://github.com/krypt0nn)\
 Licensed under [MIT](LICENSE)

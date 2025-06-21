@@ -50,79 +50,75 @@
 //! In this example we will spawn the server binary as a child of the client
 //! binary process.
 //!
-//! ## Server
-//!
-//! ```ignore
-//! use ioserverlib::prelude::*;
-//! use ioserverlib::server::Server;
-//!
-//! // Implement our custom messages serializer. It must be compatible with the
-//! // client's serializer struct.
-//! struct MySerializer;
-//!
-//! impl JsonSerializer for MySerializer {
-//!     // Any type which can be converted from `serde_json::Error`
-//!     // and `std::io::Error`.
-//!     type Error = Box<dyn std::error::Error>;
-//!
-//!     // Any `serde::Serialize` + `serde::de::DeserializeOwned` type.
-//!     type Message = String;
-//! }
-//!
-//! // Create communication channel using current process's stdin and stdout.
-//! let channel = ioserverlib::channel::stdio(MySerializer);
-//!
-//! let mut server = Server::new(channel, |message| {
-//!     match message {
-//!         "ping" => Some(String::from("pong")),
-//!
-//!         // (!) use stderr because stdout is used for IPC.
-//!         _ => {
-//!             eprintln!("unknown command: {message}");
-//!
-//!             None
-//!         }
-//!     }
-//! });
-//!
-//! // Listen to incoming messages in a loop and handle them.
-//! loop {
-//!     if let Err(err) = server.update() {
-//!         // (!) use stderr because stdout is used for IPC.
-//!         eprintln!("server error: {err}");
-//!     }
-//! }
-//! ```
-//!
-//! ## Client
-//!
 //! ```ignore
 //! use std::process::Command;
 //!
 //! use ioserverlib::prelude::*;
+//! use ioserverlib::server::Server;
 //!
-//! // Implement our custom messages serializer. It must be compatible with the
-//! // server's serializer struct.
-//! struct MySerializer;
-//!
-//! impl JsonSerializer for MySerializer {
-//!     // Any type which can be converted from `serde_json::Error`
-//!     // and `std::io::Error`.
-//!     type Error = Box<dyn std::error::Error>;
-//!
-//!     // Any `serde::Serialize` + `serde::de::DeserializeOwned` type.
-//!     type Message = String;
+//! #[derive(Debug, serde::Serialize, serde::Deserialize)]
+//! enum Message {
+//!     Ping,
+//!     Pong
 //! }
 //!
-//! // Create communication channel with the spawned server binary process.
-//! let command = Command::new("path/to/server");
+//! struct Serializer;
 //!
-//! let (_, mut channel) = ioserverlib::client::process_stdio(command, MySerializer);
+//! impl JsonSerializer for Serializer {
+//!     type Error = Box<dyn std::error::Error>;
+//!     type Message = Message;
+//! }
 //!
-//! channel.write(String::from("ping")).unwrap();
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let mut args = std::env::args().skip(1);
 //!
-//! assert_eq!(channel.read().unwrap(), "pong");
+//!     match args.next().as_deref() {
+//!         Some("client") => {
+//!             let mut command = Command::new(std::env::current_exe()?);
+//!
+//!             let command = command.arg("server");
+//!
+//!             let (mut child, mut channel) = ioserverlib::client::process_stdio(command, Serializer)?;
+//!
+//!             channel.write(Message::Ping)?;
+//!
+//!             dbg!(channel.read()?);
+//!
+//!             child.kill()?;
+//!         }
+//!
+//!         Some("server") => {
+//!             let channel = ioserverlib::channel::stdio(Serializer);
+//!
+//!             let mut server = Server::new(channel, |message| {
+//!                 match message {
+//!                     Message::Ping => Some(Message::Pong),
+//!                     Message::Pong => None
+//!                 }
+//!             });
+//!
+//!             loop {
+//!                 if let Err(err) = server.update() {
+//!                     eprintln!("server error: {err}");
+//!                 }
+//!             }
+//!         }
+//!
+//!         Some(command) => eprintln!("unknown command: {command}"),
+//!         _ => eprintln!("missing command: client or server")
+//!     }
+//!
+//!     Ok(())
+//! }
 //! ```
+//!
+//! > $ cargo run \-\- client
+//! >
+//! > [src/main.rs:32:13] channel.read()? = Pong
+//!
+//! > $ echo '"Ping"' | cargo run \-\- server
+//! >
+//! > "Pong"
 
 pub mod serializer;
 pub mod channel;
