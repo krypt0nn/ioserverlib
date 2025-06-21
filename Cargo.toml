@@ -1,0 +1,22 @@
+[package]
+name = "ioserverlib"
+version = "0.1.0"
+description = "IO messages serving library"
+authors = ["Nikita Podvirnyi <krypt0nn@vk.com>"]
+homepage = "https://github.com/krypt0nn/ioserverlib"
+repository = "https://github.com/krypt0nn/ioserverlib"
+license = "MIT"
+edition = "2024"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+
+[features]
+json-serializer = ["dep:serde", "dep:serde_json"]
+
+default = ["json-serializer"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
