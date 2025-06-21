@@ -1,4 +1,4 @@
-use std::io::{Read, Write, Stdin, Stdout, Stderr};
+use std::io::{Read, Write, Stdin, Stdout, Stderr, BufReader, BufWriter};
 
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
@@ -116,6 +116,13 @@ impl<R> ReadChannel<R> {
     }
 }
 
+impl<R: Read> ReadChannel<R> {
+    #[inline]
+    pub fn buffered(self) -> ReadChannel<BufReader<R>> {
+        ReadChannel::new(BufReader::new(self.into_inner()))
+    }
+}
+
 impl<R: Read> ReadOnlyChannel<R> for ReadChannel<R> {
     #[inline]
     fn try_read<W: Write, S: Serializer<R, W>>(
@@ -168,6 +175,13 @@ impl<W> WriteChannel<W> {
     #[inline(always)]
     pub fn into_inner(self) -> W {
         self.0
+    }
+}
+
+impl<W: Write> WriteChannel<W> {
+    #[inline]
+    pub fn buffered(self) -> WriteChannel<BufWriter<W>> {
+        WriteChannel::new(BufWriter::new(self.into_inner()))
     }
 }
 
@@ -231,6 +245,46 @@ impl<R, W, S> UniChannel<R, W, S> {
         let (reader, writer, serializer) = self.into_inner();
 
         UniChannel::new(writer, reader, serializer)
+    }
+}
+
+impl<R, W, S> UniChannel<R, W, S>
+where
+    R: Read,
+    W: Write,
+    S: Serializer<R, W>
+{
+    #[inline]
+    pub fn buffered_reader(self) -> UniChannel<BufReader<R>, W, S> {
+        let (reader, writer, serializer) = self.into_inner();
+
+        UniChannel::new(
+            BufReader::new(reader),
+            writer,
+            serializer
+        )
+    }
+
+    #[inline]
+    pub fn buffered_writer(self) -> UniChannel<R, BufWriter<W>, S> {
+        let (reader, writer, serializer) = self.into_inner();
+
+        UniChannel::new(
+            reader,
+            BufWriter::new(writer),
+            serializer
+        )
+    }
+
+    #[inline]
+    pub fn buffered(self) -> UniChannel<BufReader<R>, BufWriter<W>, S> {
+        let (reader, writer, serializer) = self.into_inner();
+
+        UniChannel::new(
+            BufReader::new(reader),
+            BufWriter::new(writer),
+            serializer
+        )
     }
 }
 
