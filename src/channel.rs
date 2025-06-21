@@ -67,21 +67,29 @@ pub fn stderr() -> WriteChannel<Stderr> {
 /// Get owned read-write channel from the stdin and stdout streams and provided
 /// serializer.
 #[inline]
-pub fn stdio<S>(serializer: S) -> UniChannel<Stdin, Stdout, S>
+pub fn stdio<S>(serializer: S) -> UniChannel<BufReader<Stdin>, BufWriter<Stdout>, S>
 where
-    S: Serializer<Stdin, Stdout>
+    S: Serializer<BufReader<Stdin>, BufWriter<Stdout>>
 {
-    UniChannel::new(std::io::stdin(), std::io::stdout(), serializer)
+    UniChannel::new(
+        BufReader::new(std::io::stdin()),
+        BufWriter::new(std::io::stdout()),
+        serializer
+    )
 }
 
 /// Get owned read-write channel from the stdin and stderr streams and provided
 /// serializer.
 #[inline]
-pub fn stdie<S>(serializer: S) -> UniChannel<Stdin, Stderr, S>
+pub fn stdie<S>(serializer: S) -> UniChannel<BufReader<Stdin>, BufWriter<Stderr>, S>
 where
-    S: Serializer<Stdin, Stdout>
+    S: Serializer<BufReader<Stdin>, BufWriter<Stderr>>
 {
-    UniChannel::new(std::io::stdin(), std::io::stderr(), serializer)
+    UniChannel::new(
+        BufReader::new(std::io::stdin()),
+        BufWriter::new(std::io::stderr()),
+        serializer
+    )
 }
 
 /// Get owned read-write unix socket channel from the provided path and
@@ -245,46 +253,6 @@ impl<R, W, S> UniChannel<R, W, S> {
         let (reader, writer, serializer) = self.into_inner();
 
         UniChannel::new(writer, reader, serializer)
-    }
-}
-
-impl<R, W, S> UniChannel<R, W, S>
-where
-    R: Read,
-    W: Write,
-    S: Serializer<R, W>
-{
-    #[inline]
-    pub fn buffered_reader(self) -> UniChannel<BufReader<R>, W, S> {
-        let (reader, writer, serializer) = self.into_inner();
-
-        UniChannel::new(
-            BufReader::new(reader),
-            writer,
-            serializer
-        )
-    }
-
-    #[inline]
-    pub fn buffered_writer(self) -> UniChannel<R, BufWriter<W>, S> {
-        let (reader, writer, serializer) = self.into_inner();
-
-        UniChannel::new(
-            reader,
-            BufWriter::new(writer),
-            serializer
-        )
-    }
-
-    #[inline]
-    pub fn buffered(self) -> UniChannel<BufReader<R>, BufWriter<W>, S> {
-        let (reader, writer, serializer) = self.into_inner();
-
-        UniChannel::new(
-            BufReader::new(reader),
-            BufWriter::new(writer),
-            serializer
-        )
     }
 }
 
